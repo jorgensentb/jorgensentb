@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Market Data Chart</title>
+    <!-- Include Plotly library -->
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <style>
+        html, body {
+            height: 100vh; /* Set the height to 100vh to prevent scrolling */
+            margin: 0;
+            padding: 0;
+            font-family: 'Arial', sans-serif; /* Use a modern font */
+            overflow: hidden; /* Prevent scrolling */
+        }
+        #chartContainer {
+            height: calc(100vh - 60px); /* 100vh minus top and bottom margins */
+            margin: 30px; /* Add 30px margin around the chart */
+            position: relative; /* Ensure positioning context for overlay */
+        }
+        #marketChart {
+            height: 100%;
+        }
+        .overlay {
+            position: fixed; /* Cover the entire viewport */
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.5); /* Semi-transparent white layer */
+            pointer-events: none; /* Ensure the overlay doesn't block interactions */
+            overflow: hidden; /* Prevent overflow */
+        }
+        .overlay-text {
+            font-size: 72px; /* Increase the size of the central text */
+            font-weight: bold;
+            font-family: 'Arial', sans-serif; /* Use a modern font */
+            color: inherit; /* Inherit the color */
+            transform: rotate(-45deg); /* Rotate the text by -45 degrees */
+            position: absolute;
+            white-space: nowrap;
+            opacity: 0.2; /* Slightly transparent for tiling effect */
+        }
+        .tile {
+            position: absolute;
+            white-space: nowrap;
+            opacity: 0.2; /* Slightly transparent for tiling effect */
+        }
+        @keyframes shake {
+            0% { transform: translate(0, 0) rotate(-45deg); }
+            10% { transform: translate(var(--jiggle-x), var(--jiggle-y)) rotate(-45deg); }
+            20% { transform: translate(calc(var(--jiggle-x) * -1), var(--jiggle-y)) rotate(-45deg); }
+            30% { transform: translate(var(--jiggle-x), calc(var(--jiggle-y) * -1)) rotate(-45deg); }
+            40% { transform: translate(calc(var(--jiggle-x) * -1), calc(var(--jiggle-y) * -1)) rotate(-45deg); }
+            50% { transform: translate(var(--jiggle-x), var(--jiggle-y)) rotate(-45deg); }
+            60% { transform: translate(calc(var(--jiggle-x) * -1), var(--jiggle-y)) rotate(-45deg); }
+            70% { transform: translate(var(--jiggle-x), calc(var(--jiggle-y) * -1)) rotate(-45deg); }
+            80% { transform: translate(calc(var(--jiggle-x) * -1), calc(var(--jiggle-y) * -1)) rotate(-45deg); }
+            90% { transform: translate(var(--jiggle-x), var(--jiggle-y)) rotate(-45deg); }
+            100% { transform: translate(0, 0) rotate(-45deg); }
+        }
+        .disclaimer {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            background-color: #f0f0f0;
+            padding: 10px;
+            text-align: center;
+            font-size: 12px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div id="chartContainer">
+        <div id="marketChart"></div>
+        <div class="overlay" id="overlay">
+            <div id="trendText" class="overlay-text"></div>
+        </div>
+    </div>
+    <div class="disclaimer">
+        This page is for entertainment purposes only and should not be interpreted as financial advice.
+    </div>
+    <script>
+        // Load data from market_data.json
+        fetch('market_data.json')
+            .then(response => response.json())
+            .then(data => {
+                // Extract timestamps and prices from market data
+                const timestamps = data.map(entry => entry[0]);
+                const prices = data.map(entry => entry[1]);
+
+                // Determine the color based on trend direction and set overlay text
+                const firstPrice = prices[0];
+                const lastPrice = prices[prices.length - 1];
+                const isPositiveTrend = lastPrice < firstPrice; // Invert the positive/negative trends
+                const color = isPositiveTrend ? 'green' : 'red'; // Correct the colors
+                // const trendText = isPositiveTrend ? 'BUY! ' : 'SELL! ';
+                // document.getElementById('trendText').innerText = trendText;
+                // document.getElementById('trendText').style.color = color;
+                let trendText;
+                const today = new Date();
+                if (today.getDay() === 0 || today.getDay() === 6) { // Check if it's Saturday or Sunday
+                    trendText = 'PARTY! ';
+                } else {
+                    trendText = isPositiveTrend ? 'BUY! ' : 'SELL! ';
+}
+document.getElementById('trendText').innerText = trendText;
+document.getElementById('trendText').style.color = color;
+
+                // Calculate the trend magnitude
+                const trendMagnitude = Math.abs((lastPrice - firstPrice) / firstPrice);
+                const jiggleAmount = Math.min(trendMagnitude * 200, 50); // Adjust jiggle amount
+                const animationSpeed = Math.max(0.5, 2 - trendMagnitude * 2); // Adjust speed, min 0.5s, max 2s
+
+                // Apply shake animation (dynamic duration based on trendMagnitude)
+                const overlayText = document.getElementById('trendText');
+                overlayText.style.setProperty('--jiggle-x', `${jiggleAmount}px`);
+                overlayText.style.setProperty('--jiggle-y', `${jiggleAmount}px`);
+                overlayText.style.animation = `shake ${animationSpeed}s infinite`;
+
+                // Create Plotly trace
+                const trace = {
+                    x: timestamps,
+                    y: prices,
+                    mode: 'lines', // Remove datapoints, keep line
+                    line: { color: color, shape: 'linear' }, // Set line color based on trend
+                    type: 'scatter',
+                    name: 'Market Data'
+                };
+
+                // Define layout
+                const layout = {
+                    title: {
+                        text: 'Nvidia Stock Performance',
+                        font: { size: 24, weight: 'bold' } // Bold and 1.5 times the font size
+                    },
+                    xaxis: {
+                        title: 'Eastern Time',
+                        automargin: true,
+                        titlefont: { standoff: 80 } // Increase spacing
+                    },
+                    yaxis: {
+                        title: 'Nvidia Price',
+                        automargin: true,
+                        titlefont: { standoff: 80 }, // Increase spacing
+                        tickprefix: '$' // Add $ to y-axis labels
+                    },
+                    autosize: true,
+                    margin: { l: 50, r: 50, b: 50, t: 50, pad: 4 }
+                };
+
+                // Plot the chart
+                Plotly.newPlot('marketChart', [trace], layout);
+
+                // Add the text tiles to cover the entire viewport
+                const overlay = document.getElementById('overlay');
+                for (let i = -100; i < window.innerWidth; i += 120) {
+                    for (let j = -100; j < window.innerHeight; j += 120) {
+                        const tile = overlayText.cloneNode(true);
+                        tile.classList.add('tile');
+                        tile.style.left = `${i}px`;
+                        tile.style.top = `${j}px`;
+                        tile.style.animation = `shake ${animationSpeed}s infinite`; // Ensure each tile has the shake animation
+                        overlay.appendChild(tile);
+                    }
+                }
+            })
+            .catch(error => console.error('Error loading data:', error));
+    </script>
+</body>
+</html>
