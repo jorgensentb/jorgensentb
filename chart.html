@@ -3,49 +3,49 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Market Data Chart</title>
-    <!-- Include Plotly library -->
+    <title>Stock Tracker</title>
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
     <style>
         html, body {
-            height: 100vh; /* Set the height to 100vh to prevent scrolling */
+            height: 100vh;
             margin: 0;
             padding: 0;
-            font-family: 'Arial', sans-serif; /* Use a modern font */
-            overflow: hidden; /* Prevent scrolling */
+            font-family: 'Open Sans', sans-serif;
+            overflow: hidden;
         }
         #chartContainer {
-            height: calc(100vh - 60px); /* 100vh minus top and bottom margins */
-            margin: 30px; /* Add 30px margin around the chart */
-            position: relative; /* Ensure positioning context for overlay */
+            height: calc(100vh - 60px);
+            margin: 30px;
+            position: relative;
         }
         #marketChart {
             height: 100%;
         }
         .overlay {
-            position: fixed; /* Cover the entire viewport */
+            position: fixed;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
-            background: rgba(255, 255, 255, 0.5); /* Semi-transparent white layer */
-            pointer-events: none; /* Ensure the overlay doesn't block interactions */
-            overflow: hidden; /* Prevent overflow */
+            background: rgba(255, 255, 255, 0.5);
+            pointer-events: none;
+            overflow: hidden;
         }
         .overlay-text {
-            font-size: 72px; /* Increase the size of the central text */
+            font-size: 72px;
             font-weight: bold;
-            font-family: 'Arial', sans-serif; /* Use a modern font */
-            color: inherit; /* Inherit the color */
-            transform: rotate(-45deg); /* Rotate the text by -45 degrees */
+            font-family: 'Open Sans', sans-serif;
+            color: inherit;
+            transform: rotate(-45deg);
             position: absolute;
             white-space: nowrap;
-            opacity: 0.2; /* Slightly transparent for tiling effect */
+            opacity: 0.2;
         }
         .tile {
             position: absolute;
             white-space: nowrap;
-            opacity: 0.2; /* Slightly transparent for tiling effect */
+            opacity: 0.2;
         }
         @keyframes shake {
             0% { transform: translate(0, 0) rotate(-45deg); }
@@ -71,6 +71,48 @@
             font-size: 12px;
             color: #666;
         }
+        .button-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+        }
+        .ticker-button {
+            padding: 10px 20px;
+            font-size: 16px;
+            font-weight: bold;
+            color: white;
+            background-color: #007bff;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        .ticker-button:hover {
+            background-color: #0056b3;
+        }
+        .ticker-button.selected {
+            background-color: #28a745;
+        }
+        .spinner {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 8px solid rgba(0, 0, 0, 0.1);
+            border-radius: 50%;
+            border-top: 8px solid #007bff;
+            width: 60px;
+            height: 60px;
+            animation: spin 1s linear infinite;
+            z-index: 1000;
+            display: none;
+        }
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
     </style>
 </head>
 <body>
@@ -83,92 +125,160 @@
     <div class="disclaimer">
         This page is for entertainment purposes only and should not be interpreted as financial advice.
     </div>
+    <div class="button-container">
+        <button class="ticker-button selected" id="nvdaButton" onclick="selectTicker('NVDA')">NVDA</button>
+        <button class="ticker-button" id="gmeButton" onclick="selectTicker('GME')">GME</button>
+        <button class="ticker-button" id="amcButton" onclick="selectTicker('AMC')">AMC</button>
+    </div>
+    <div class="spinner" id="spinner"></div>
     <script>
-        // Load data from market_data.json
-        fetch('market_data.json')
-            .then(response => response.json())
-            .then(data => {
-                // Extract timestamps and prices from market data
-                const timestamps = data.map(entry => entry[0]);
-                const prices = data.map(entry => entry[1]);
+        let selectedTicker = 'NVDA';
+        const dataCache = {};
 
-                // Determine the color based on trend direction and set overlay text
-                const firstPrice = prices[0];
-                const lastPrice = prices[prices.length - 1];
-                const isPositiveTrend = lastPrice < firstPrice; // Invert the positive/negative trends
-                const color = isPositiveTrend ? 'green' : 'red'; // Correct the colors
-                // const trendText = isPositiveTrend ? 'BUY! ' : 'SELL! ';
-                // document.getElementById('trendText').innerText = trendText;
-                // document.getElementById('trendText').style.color = color;
-                let trendText;
-                const today = new Date();
-                if (today.getDay() === 0 || today.getDay() === 6) { // Check if it's Saturday or Sunday
-                    trendText = 'PARTY! ';
+        async function callApi(ticker) {
+            if (dataCache[ticker]) {
+                return dataCache[ticker];
+            }
+
+            document.getElementById('spinner').style.display = 'block';
+            const url = 'https://www.alphavantage.co/query';
+            const params = {
+                'function': 'TIME_SERIES_INTRADAY',
+                'symbol': ticker,
+                'interval': '5min',
+                'apikey': 'ALAUMF9IV75IZIIL' // Replace with your actual API key
+            };
+            const queryString = new URLSearchParams(params).toString();
+            const fullUrl = `${url}?${queryString}`;
+
+            try {
+                const response = await fetch(fullUrl);
+                document.getElementById('spinner').style.display = 'none';
+                if (response.ok) {
+                    const data = await response.json();
+                    if (data['Error Message'] || data['Note']) {
+                        console.error('API error:', data);
+                        alert(`API error: ${data['Error Message'] || data['Note']}`);
+                        return null;
+                    }
+                    dataCache[ticker] = data;
+                    return data;
                 } else {
-                    trendText = isPositiveTrend ? 'BUY! ' : 'SELL! ';
-}
-document.getElementById('trendText').innerText = trendText;
-document.getElementById('trendText').style.color = color;
+                    console.error('Error fetching data:', response.status);
+                    return null;
+                }
+            } catch (error) {
+                document.getElementById('spinner').style.display = 'none';
+                console.error('Error fetching data:', error);
+                return null;
+            }
+        }
 
-                // Calculate the trend magnitude
-                const trendMagnitude = Math.abs((lastPrice - firstPrice) / firstPrice);
-                const jiggleAmount = Math.min(trendMagnitude * 200, 50); // Adjust jiggle amount
-                const animationSpeed = Math.max(0.5, 2 - trendMagnitude * 2); // Adjust speed, min 0.5s, max 2s
+        async function initChart(ticker) {
+            const data = await callApi(ticker);
+            if (data) {
+                const transformedData = transformData(data);
+                if (transformedData) {
+                    const timestamps = transformedData.map(entry => entry[0]);
+                    const prices = transformedData.map(entry => entry[1]);
 
-                // Apply shake animation (dynamic duration based on trendMagnitude)
-                const overlayText = document.getElementById('trendText');
-                overlayText.style.setProperty('--jiggle-x', `${jiggleAmount}px`);
-                overlayText.style.setProperty('--jiggle-y', `${jiggleAmount}px`);
-                overlayText.style.animation = `shake ${animationSpeed}s infinite`;
+                    const firstPrice = prices[0];
+                    const lastPrice = prices[prices.length - 1];
+                    const isPositiveTrend = lastPrice < firstPrice;
+                    const color = isPositiveTrend ? 'green' : 'red';
 
-                // Create Plotly trace
-                const trace = {
-                    x: timestamps,
-                    y: prices,
-                    mode: 'lines', // Remove datapoints, keep line
-                    line: { color: color, shape: 'linear' }, // Set line color based on trend
-                    type: 'scatter',
-                    name: 'Market Data'
-                };
+                    let trendText;
+                    const today = new Date();
+                    if (today.getDay() === 0 || today.getDay() === 6) {
+                        trendText = 'PARTY! ';
+                    } else {
+                        trendText = isPositiveTrend ? 'BUY! ' : 'SELL! ';
+                    }
+                    document.getElementById('trendText').innerText = trendText;
+                    document.getElementById('trendText').style.color = color;
 
-                // Define layout
-                const layout = {
-                    title: {
-                        text: 'Nvidia Stock Performance',
-                        font: { size: 24, weight: 'bold' } // Bold and 1.5 times the font size
-                    },
-                    xaxis: {
-                        title: 'Eastern Time',
-                        automargin: true,
-                        titlefont: { standoff: 80 } // Increase spacing
-                    },
-                    yaxis: {
-                        title: 'Nvidia Price',
-                        automargin: true,
-                        titlefont: { standoff: 80 }, // Increase spacing
-                        tickprefix: '$' // Add $ to y-axis labels
-                    },
-                    autosize: true,
-                    margin: { l: 50, r: 50, b: 50, t: 50, pad: 4 }
-                };
+                    const trendMagnitude = Math.abs(((lastPrice - firstPrice) / firstPrice) * 5);
+                    const jiggleAmount = Math.min(trendMagnitude * 200, 50);
+                    const animationSpeed = Math.max(0.01, 2 - trendMagnitude * 5);
 
-                // Plot the chart
-                Plotly.newPlot('marketChart', [trace], layout);
+                    const overlayText = document.getElementById('trendText');
+                    overlayText.style.setProperty('--jiggle-x', `${jiggleAmount}px`);
+                    overlayText.style.setProperty('--jiggle-y', `${jiggleAmount}px`);
+                    overlayText.style.animation = `shake ${animationSpeed}s infinite`;
 
-                // Add the text tiles to cover the entire viewport
-                const overlay = document.getElementById('overlay');
-                for (let i = -100; i < window.innerWidth; i += 120) {
-                    for (let j = -100; j < window.innerHeight; j += 120) {
-                        const tile = overlayText.cloneNode(true);
-                        tile.classList.add('tile');
-                        tile.style.left = `${i}px`;
-                        tile.style.top = `${j}px`;
-                        tile.style.animation = `shake ${animationSpeed}s infinite`; // Ensure each tile has the shake animation
-                        overlay.appendChild(tile);
+                    const trace = {
+                        x: timestamps,
+                        y: prices,
+                        mode: 'lines',
+                        line: { color: color, shape: 'linear' },
+                        type: 'scatter',
+                        name: 'Market Data'
+                    };
+
+                    const layout = {
+                        title: {
+                            text: `${ticker} Stock Performance`,
+                            font: { size: 24, weight: 'bold' }
+                        },
+                        xaxis: {
+                            title: 'Eastern Time',
+                            automargin: true,
+                            titlefont: { standoff: 80 }
+                        },
+                        yaxis: {
+                            title: `${ticker} Price`,
+                            automargin: true,
+                            titlefont: { standoff: 80 },
+                            tickprefix: '$'
+                        },
+                        autosize: true,
+                        margin: { l: 50, r: 50, b: 50, t: 50, pad: 4 }
+                    };
+
+                    Plotly.newPlot('marketChart', [trace], layout);
+
+                    const overlay = document.getElementById('overlay');
+                    overlay.innerHTML = '';
+                    for (let i = -100; i < window.innerWidth; i += 120) {
+                        for (let j = -100; j < window.innerHeight; j += 120) {
+                            const tile = overlayText.cloneNode(true);
+                            tile.classList.add('tile');
+                            tile.style.left = `${i}px`;
+                            tile.style.top = `${j}px`;
+                            tile.style.animation = `shake ${animationSpeed}s infinite`;
+                            overlay.appendChild(tile);
+                        }
                     }
                 }
-            })
-            .catch(error => console.error('Error loading data:', error));
+            }
+        }
+
+        function transformData(data) {
+            if ('Time Series (5min)' in data) {
+                const timeSeries = data['Time Series (5min)'];
+                const transformedData = [];
+                for (const timestamp in timeSeries) {
+                    const price = parseFloat(timeSeries[timestamp]['1. open']);
+                    transformedData.push([timestamp, price]);
+                }
+                return transformedData;
+            } else {
+                console.error('Error: Time Series data not found in the API response.');
+                return null;
+            }
+        }
+
+        function selectTicker(ticker) {
+            selectedTicker = ticker;
+            document.querySelectorAll('.ticker-button').forEach(button => {
+                button.classList.remove('selected');
+            });
+            document.getElementById(`${ticker.toLowerCase()}Button`).classList.add('selected');
+            initChart(ticker);
+        }
+
+        // Initialize chart with default ticker
+        initChart(selectedTicker);
     </script>
 </body>
 </html>
